@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#68bfff" />
+  <title>Fantasy Parallax Demo</title>
+  <style>
+    :root {
+      --ui: rgba(255,255,255,.82);
+      --shadow: rgba(13,39,81,.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: #7ac8ff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+    }
+
+    #scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grab;
+      background: #7ac8ff;
+    }
+
+    #scene.dragging { cursor: grabbing; }
+
+    .layer {
+      position: absolute;
+      inset: -28%;
+      width: 156%;
+      height: 156%;
+      pointer-events: none;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    .layer img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+
+    #far {
+      z-index: 1;
+      filter: saturate(1.03) contrast(1.01);
+    }
+
+    #mid {
+      z-index: 2;
+      inset: -30%;
+      width: 160%;
+      height: 160%;
+    }
+
+    #mid img {
+      object-fit: cover;
+    }
+
+    #hero {
+      z-index: 3;
+      inset: -24%;
+      width: 148%;
+      height: 148%;
+      filter: drop-shadow(0 22px 32px rgba(20,55,95,.28));
+    }
+
+    #hero img {
+      object-fit: contain;
+      object-position: 50% 54%;
+    }
+
+    /* 画面端の軽いレンズ感。画像そのものは加工しない。 */
+    #vignette {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 42%, transparent 55%, rgba(9,30,63,.12) 100%),
+        linear-gradient(to bottom, rgba(255,255,255,.06), transparent 24%, transparent 75%, rgba(5,22,55,.08));
+    }
+
+    #shine {
+      position: absolute;
+      z-index: 4;
+      inset: -30%;
+      pointer-events: none;
+      opacity: .18;
+      background: linear-gradient(
+        115deg,
+        transparent 37%,
+        rgba(255,255,255,.72) 47%,
+        rgba(255,255,255,.12) 53%,
+        transparent 62%
+      );
+      transform: translate3d(-14%, -8%, 0);
+      mix-blend-mode: screen;
+      will-change: transform;
+    }
+
+    #hint {
+      position: absolute;
+      z-index: 10;
+      left: 50%;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      padding: 9px 14px;
+      border: 1px solid rgba(255,255,255,.38);
+      border-radius: 999px;
+      color: var(--ui);
+      background: rgba(5,19,45,.22);
+      box-shadow: 0 8px 28px rgba(0,0,0,.12);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-shadow: 0 1px 8px var(--shadow);
+      pointer-events: none;
+      transition: opacity .45s ease, transform .45s ease;
+      white-space: nowrap;
+    }
+
+    #hint.hidden {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #shine { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main id="scene" aria-label="指で上下左右にドラッグすると奥行きのあるパララックス表示になります">
+    <div class="layer" id="far"><img src="assets/bg_far.webp" alt=""></div>
+    <div class="layer" id="mid"><img src="assets/bg_mid.webp" alt=""></div>
+    <div id="shine"></div>
+    <div class="layer" id="hero"><img src="assets/character.webp" alt=""></div>
+    <div id="vignette"></div>
+    <div id="hint">DRAG / SWIPE</div>
+  </main>
+
+  <script>
+    (() => {
+      const scene = document.getElementById("scene");
+      const far = document.getElementById("far");
+      const mid = document.getElementById("mid");
+      const hero = document.getElementById("hero");
+      const shine = document.getElementById("shine");
+      const hint = document.getElementById("hint");
+
+      /*
+       * ここだけ触れば遠近感を調整できます。
+       * 数値が大きいほど、そのレイヤーが指の動きに大きく追従します。
+       */
+      const DEPTH = {
+        far:  0.12,
+        mid:  0.35,
+        hero: 0.72,
+        shine: 0.42
+      };
+
+      // 指を大きく動かしても画面外が見えないよう制限。
+      const MAX_X = 220;
+      const MAX_Y = 190;
+
+      // 指で動かしている間の追従。少しだけ遅れて付いてくる。
+      const DRAG_SMOOTH = 0.20;
+
+      // 指を離した直後の慣性移動
+      const INERTIA_DURATION = 520;
+      const INERTIA_DISTANCE_MULTIPLIER = 180;
+
+      // 指を離した後の「ふわっと戻る」時間。
+      const RETURN_DURATION = 2400;
+
+      let activePointer = null;
+      let startX = 0;
+      let startY = 0;
+      let targetX = 0;
+      let targetY = 0;
+      let currentX = 0;
+      let currentY = 0;
+      let releaseTimer = null;
+      let returnAnim = null;
+      let inertiaAnim = null;
+      let hasInteracted = false;
+
+      // ドラッグ終端の速度推定用
+      let lastMoveX = 0;
+      let lastMoveY = 0;
+      let lastMoveTime = 0;
+      let velocityX = 0;
+      let velocityY = 0;
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function transform(el, x, y, depth, scale) {
+        const tx = x * depth;
+        const ty = y * depth;
+        el.style.transform =
+          `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) scale(${scale})`;
+      }
+
+      function easeOutQuint(t) {
+        return 1 - Math.pow(1 - t, 5);
+      }
+
+      function easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+      }
+
+      function render(now = performance.now()) {
+        if (inertiaAnim && activePointer === null) {
+          const t = Math.min(1, (now - inertiaAnim.startTime) / INERTIA_DURATION);
+          const eased = easeOutCubic(t);
+
+          currentX = inertiaAnim.fromX + (inertiaAnim.toX - inertiaAnim.fromX) * eased;
+          currentY = inertiaAnim.fromY + (inertiaAnim.toY - inertiaAnim.fromY) * eased;
+          targetX = currentX;
+          targetY = currentY;
+
+          if (t >= 1) {
+            currentX = inertiaAnim.toX;
+            currentY = inertiaAnim.toY;
+            targetX = currentX;
+            targetY = currentY;
+            inertiaAnim = null;
+          }
+
+        } else if (returnAnim && activePointer === null) {
+          const t = Math.min(1, (now - returnAnim.startTime) / RETURN_DURATION);
+          const eased = easeOutQuint(t);
+
+          currentX = returnAnim.fromX * (1 - eased);
+          currentY = returnAnim.fromY * (1 - eased);
+          targetX = currentX;
+          targetY = currentY;
+
+          if (t >= 1) {
+            currentX = 0;
+            currentY = 0;
+            targetX = 0;
+            targetY = 0;
+            returnAnim = null;
+          }
+
+        } else {
+          currentX += (targetX - currentX) * DRAG_SMOOTH;
+          currentY += (targetY - currentY) * DRAG_SMOOTH;
+        }
+
+        transform(far,  currentX, currentY, DEPTH.far,  1.04);
+        transform(mid,  currentX, currentY, DEPTH.mid,  1.03);
+        transform(hero, currentX, currentY, DEPTH.hero, 1.02);
+
+        // 光は少し逆方向に動き、空間のズレを強調。
+        shine.style.transform =
+          `translate3d(${(-currentX * DEPTH.shine - 70).toFixed(2)}px,
+                       ${(-currentY * DEPTH.shine - 30).toFixed(2)}px, 0)
+           rotate(0.001deg)`;
+
+        requestAnimationFrame(render);
+      }
+
+      function begin(pointerId, x, y) {
+        activePointer = pointerId;
+        startX = x;
+        startY = y;
+        scene.classList.add("dragging");
+
+        if (releaseTimer) {
+          clearTimeout(releaseTimer);
+          releaseTimer = null;
+        }
+
+        // 戻り途中・慣性移動中にもう一度触ったら、その位置からすぐ操作へ戻る。
+        returnAnim = null;
+        inertiaAnim = null;
+        targetX = currentX;
+        targetY = currentY;
+
+        lastMoveX = x;
+        lastMoveY = y;
+        lastMoveTime = performance.now();
+        velocityX = 0;
+        velocityY = 0;
+
+        if (!hasInteracted) {
+          hasInteracted = true;
+          hint.classList.add("hidden");
+        }
+      }
+
+      function move(x, y) {
+        if (activePointer === null) return;
+
+        const now = performance.now();
+        const dt = Math.max(1, now - lastMoveTime);
+        const rawVX = (x - lastMoveX) / dt; // px/ms
+        const rawVY = (y - lastMoveY) / dt; // px/ms
+
+        // 急激なブレを抑えつつ終端速度を取る
+        velocityX = velocityX * 0.55 + rawVX * 0.45;
+        velocityY = velocityY * 0.55 + rawVY * 0.45;
+
+        lastMoveX = x;
+        lastMoveY = y;
+        lastMoveTime = now;
+
+        const dx = x - startX;
+        const dy = y - startY;
+
+        targetX = clamp(dx, -MAX_X, MAX_X);
+        targetY = clamp(dy, -MAX_Y, MAX_Y);
+      }
+
+      function end() {
+        if (activePointer === null) return;
+        activePointer = null;
+        scene.classList.remove("dragging");
+
+        const releaseVX = velocityX;
+        const releaseVY = velocityY;
+
+        // 離した瞬間の速度を少し引き継いで、先へ流れる
+        const inertiaTargetX = clamp(
+          currentX + releaseVX * INERTIA_DISTANCE_MULTIPLIER,
+          -MAX_X,
+          MAX_X
+        );
+        const inertiaTargetY = clamp(
+          currentY + releaseVY * INERTIA_DISTANCE_MULTIPLIER,
+          -MAX_Y,
+          MAX_Y
+        );
+
+        inertiaAnim = {
+          startTime: performance.now(),
+          fromX: currentX,
+          fromY: currentY,
+          toX: inertiaTargetX,
+          toY: inertiaTargetY
+        };
+
+        // 慣性で少し流れた後に、中央へふわっと戻る
+        releaseTimer = setTimeout(() => {
+          returnAnim = {
+            startTime: performance.now(),
+            fromX: currentX,
+            fromY: currentY
+          };
+          inertiaAnim = null;
+        }, INERTIA_DURATION + 140);
+      }
+
+      scene.addEventListener("pointerdown", (e) => {
+        scene.setPointerCapture?.(e.pointerId);
+        begin(e.pointerId, e.clientX, e.clientY);
+      });
+
+      scene.addEventListener("pointermove", (e) => {
+        if (e.pointerId !== activePointer) return;
+        move(e.clientX, e.clientY);
+      });
+
+      scene.addEventListener("pointerup", (e) => {
+        if (e.pointerId !== activePointer) return;
+        end();
+      });
+
+      scene.addEventListener("pointercancel", (e) => {
+        if (e.pointerId !== activePointer) return;
+        end();
+      });
+
+      // PCではマウスを押さなくても微弱に反応させる。
+      scene.addEventListener("mousemove", (e) => {
+        if (activePointer !== null || matchMedia("(pointer: coarse)").matches) return;
+        const nx = (e.clientX / innerWidth - 0.5) * 2;
+        const ny = (e.clientY / innerHeight - 0.5) * 2;
+        targetX = nx * 72;
+        targetY = ny * 62;
+      });
+
+      scene.addEventListener("mouseleave", () => {
+        if (activePointer === null) {
+          targetX = 0;
+          targetY = 0;
+        }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
