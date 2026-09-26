@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Deep Sea Mermaid</title>
+<style>
+  :root{
+    --p:0;
+    --bg-pos:8;
+    --reef-pos:18;
+    --bg-y:0vh;
+    --reef-y:0vh;
+    --bubble-y:0vh;
+    --bg-scale:1.04;
+    --reef-scale:1.02;
+    --mermaid-y:108svh;
+    --mermaid-opacity:0;
+    --veil:.86;
+    --surface:.92;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:#010812;color:#fff}
+  body{
+    height:1400svh;
+    overflow-x:hidden;
+    overscroll-behavior-y:none;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic UI",sans-serif;
+  }
+
+  .stage{
+    position:fixed;
+    inset:0;
+    overflow:hidden;
+    isolation:isolate;
+    background:#031428;
+  }
+
+  .layer{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    will-change:transform,opacity,filter;
+    backface-visibility:hidden;
+    transform-origin:50% 50%;
+  }
+
+  .layer img{
+    width:100%;
+    height:100%;
+    display:block;
+    user-select:none;
+    -webkit-user-drag:none;
+  }
+
+  /* 縦長画像の大部分を使うため、translate移動より object-position を主役にする */
+  .background{
+    z-index:1;
+    transform:translate3d(0,var(--bg-y),0) scale(var(--bg-scale));
+  }
+  .background img{
+    object-fit:cover;
+    object-position:center calc(var(--bg-pos) * 1%);
+    filter:saturate(1.03) contrast(1.02) brightness(calc(.98 - var(--p) * .12));
+  }
+  .background::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:linear-gradient(
+      180deg,
+      rgba(0,0,0,0) 0%,
+      rgba(1,10,24,.12) 22%,
+      rgba(1,10,24,.28) 44%,
+      rgba(0,7,18,.62) 74%,
+      rgba(0,4,12,.93) 100%
+    );
+    opacity:calc(.76 + var(--p) * .18);
+  }
+
+  .surface-light{
+    position:absolute;
+    inset:0;
+    z-index:2;
+    pointer-events:none;
+    opacity:var(--surface);
+    background:
+      radial-gradient(ellipse at 50% -4%,rgba(190,239,255,.58) 0%,rgba(86,190,255,.20) 24%,transparent 54%),
+      linear-gradient(180deg,rgba(80,185,255,.14),transparent 42%);
+    mix-blend-mode:screen;
+  }
+
+  .reef{
+    z-index:4;
+    transform:translate3d(0,var(--reef-y),0) scale(var(--reef-scale));
+  }
+  .reef img{
+    object-fit:cover;
+    object-position:center calc(var(--reef-pos) * 1%);
+    filter:brightness(calc(1 - var(--p) * .10)) saturate(1.07);
+  }
+  .reef::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:linear-gradient(
+      180deg,
+      rgba(0,0,0,0) 0%,
+      rgba(0,10,22,.10) 16%,
+      rgba(0,9,22,.24) 40%,
+      rgba(0,7,18,.52) 70%,
+      rgba(0,4,12,.84) 100%
+    );
+    opacity:calc(.62 + var(--p) * .18);
+  }
+
+  .depth-veil{
+    position:absolute;
+    inset:0;
+    z-index:5;
+    pointer-events:none;
+    opacity:var(--veil);
+    background:linear-gradient(
+      180deg,
+      rgba(0,16,37,.06) 0%,
+      rgba(1,13,31,.18) 24%,
+      rgba(0,9,24,.42) 54%,
+      rgba(0,5,16,.90) 100%
+    );
+  }
+
+  .bubbles{
+    position:absolute;
+    inset:-12svh 0;
+    z-index:6;
+    pointer-events:none;
+    transform:translate3d(0,var(--bubble-y),0);
+    opacity:calc(.28 + var(--p) * .22);
+    background-image:
+      radial-gradient(circle at 12% 14%,rgba(255,255,255,.72) 0 1px,transparent 2px),
+      radial-gradient(circle at 83% 21%,rgba(214,246,255,.60) 0 1px,transparent 2px),
+      radial-gradient(circle at 27% 42%,rgba(255,255,255,.52) 0 1px,transparent 2px),
+      radial-gradient(circle at 74% 49%,rgba(232,249,255,.66) 0 1px,transparent 2px),
+      radial-gradient(circle at 18% 71%,rgba(255,255,255,.48) 0 1px,transparent 2px),
+      radial-gradient(circle at 89% 79%,rgba(255,255,255,.56) 0 1px,transparent 2px),
+      radial-gradient(circle at 52% 88%,rgba(227,248,255,.48) 0 1px,transparent 2px);
+    filter:drop-shadow(0 0 4px rgba(129,215,255,.35));
+  }
+
+  .mermaids{
+    z-index:7;
+    opacity:var(--mermaid-opacity);
+  }
+  .mermaids img{
+    position:absolute;
+    left:50%;
+    bottom:max(-1svh,env(safe-area-inset-bottom));
+    width:min(102vw,610px);
+    height:auto;
+    max-height:88svh;
+    transform:translate(-50%, var(--mermaid-y));
+    object-fit:contain;
+    filter:drop-shadow(0 18px 48px rgba(0,0,0,.52)) drop-shadow(0 0 22px rgba(102,190,255,.14));
+  }
+
+  .vignette{
+    position:absolute;
+    inset:0;
+    z-index:8;
+    pointer-events:none;
+    background:
+      radial-gradient(ellipse at center,transparent 47%,rgba(0,5,16,.18) 74%,rgba(0,4,13,.52) 110%),
+      linear-gradient(180deg,rgba(0,0,0,.10),transparent 15%,transparent 78%,rgba(0,0,0,.35));
+  }
+
+  .hud{position:fixed;inset:0;z-index:20;pointer-events:none}
+
+  .intro{
+    position:absolute;
+    top:max(22px,calc(env(safe-area-inset-top) + 8px));
+    left:50%;transform:translateX(-50%);
+    text-align:center;
+    text-shadow:0 2px 18px rgba(0,0,0,.55);
+  }
+  .intro .small{font-size:10px;letter-spacing:.34em;color:rgba(255,255,255,.68)}
+  .intro .main{margin-top:7px;font-size:clamp(18px,5vw,27px);letter-spacing:.12em;font-weight:650}
+
+  .hint{
+    position:absolute;
+    left:50%;bottom:max(28px,calc(env(safe-area-inset-bottom) + 14px));
+    transform:translateX(-50%);
+    text-align:center;
+    font-size:10px;letter-spacing:.28em;color:rgba(255,255,255,.82);
+  }
+  .hint::before{
+    content:"";display:block;width:13px;height:13px;margin:0 auto 11px;
+    border-right:1.5px solid rgba(255,255,255,.9);
+    border-bottom:1.5px solid rgba(255,255,255,.9);
+    transform:rotate(45deg);
+    animation:down 1.65s ease-in-out infinite;
+  }
+
+  .progress{
+    position:absolute;
+    right:max(9px,env(safe-area-inset-right));
+    top:12svh;bottom:12svh;
+    width:2px;border-radius:9px;
+    background:rgba(255,255,255,.13);
+    overflow:hidden;
+  }
+  .progress>i{
+    display:block;width:100%;height:calc(var(--p) * 100%);
+    background:linear-gradient(180deg,#a4e7ff,#82a8ff 58%,#dda5ff);
+    box-shadow:0 0 10px rgba(125,204,255,.75);
+  }
+
+  .depth-label{
+    position:absolute;
+    left:max(12px,env(safe-area-inset-left));
+    bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px));
+    font-variant-numeric:tabular-nums;
+    font-size:10px;letter-spacing:.18em;color:rgba(255,255,255,.48);
+  }
+
+  .scroll-space{height:1400svh}
+
+  @keyframes down{
+    0%,100%{transform:rotate(45deg) translate(0,0);opacity:.55}
+    50%{transform:rotate(45deg) translate(5px,5px);opacity:1}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    .hint::before{animation:none}
+  }
+</style>
+</head>
+<body>
+  <main class="stage" aria-hidden="true">
+    <div class="layer background"><img src="./background.webp" alt="" /></div>
+    <div class="surface-light"></div>
+    <div class="layer reef"><img src="./reef.webp" alt="" /></div>
+    <div class="depth-veil"></div>
+    <div class="bubbles"></div>
+    <div class="layer mermaids"><img src="./mermaids.webp" alt="" /></div>
+    <div class="vignette"></div>
+  </main>
+
+  <div class="hud" aria-hidden="true">
+    <div class="intro" id="intro">
+      <div class="small">DEEP SEA</div>
+      <div class="main">DESCEND</div>
+    </div>
+    <div class="progress"><i></i></div>
+    <div class="depth-label" id="depthLabel">0 m</div>
+    <div class="hint" id="hint">SCROLL DOWN</div>
+  </div>
+
+  <div class="scroll-space"></div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const intro = document.getElementById('intro');
+  const hint = document.getElementById('hint');
+  const depthLabel = document.getElementById('depthLabel');
+  let ticking = false;
+
+  const clamp = (v,min=0,max=1) => Math.min(max,Math.max(min,v));
+  const smooth = t => t*t*(3-2*t);
+  const easeOut = t => 1-Math.pow(1-t,3);
+
+  function render(){
+    const max = Math.max(1,document.documentElement.scrollHeight - innerHeight);
+    const p = clamp(scrollY / max);
+
+    // 画像全体をより多く使うため object-position を大きく変える。
+    const bgTravel = smooth(clamp((p - 0.02) / 0.94));
+    const reefTravel = smooth(clamp((p - 0.03) / 0.92));
+    const bgPos = 8 + 64 * bgTravel;      // 8% -> 72%
+    const reefPos = 18 + 70 * reefTravel; // 18% -> 88%
+
+    // 遠近感用の追加ドリフトは残すが、主役は縦長画像の走査。
+    const bgShift = -6.5 * p;
+    const reefShift = -14.5 * p;
+    const bubbleShift = -30 * p;
+    const bgScale = 1.04 + 0.04 * p;
+    const reefScale = 1.02 + 0.03 * p;
+
+    // 終盤で人魚を下から上へ浮上。縮小拡大なし。
+    const reveal = smooth(clamp((p - 0.80) / 0.16));
+    const revealFast = easeOut(reveal);
+    const mermaidY = 108 - 100 * revealFast;
+
+    const surface = 0.92 - 0.68 * p;
+    const veil = 0.88 - 0.30 * p - 0.18 * revealFast;
+
+    root.style.setProperty('--p', p.toFixed(4));
+    root.style.setProperty('--bg-pos', bgPos.toFixed(3));
+    root.style.setProperty('--reef-pos', reefPos.toFixed(3));
+    root.style.setProperty('--bg-y', `${bgShift.toFixed(3)}vh`);
+    root.style.setProperty('--reef-y', `${reefShift.toFixed(3)}vh`);
+    root.style.setProperty('--bubble-y', `${bubbleShift.toFixed(3)}vh`);
+    root.style.setProperty('--bg-scale', bgScale.toFixed(4));
+    root.style.setProperty('--reef-scale', reefScale.toFixed(4));
+    root.style.setProperty('--mermaid-y', `${mermaidY.toFixed(3)}svh`);
+    root.style.setProperty('--mermaid-opacity', clamp(reveal * 1.18).toFixed(4));
+    root.style.setProperty('--surface', surface.toFixed(3));
+    root.style.setProperty('--veil', clamp(veil, 0.30, 0.92).toFixed(3));
+
+    intro.style.opacity = String(1 - clamp(p / 0.14));
+    hint.style.opacity = String(1 - clamp(p / 0.08));
+    depthLabel.textContent = `${Math.round(p * 8500).toLocaleString()} m`;
+
+    ticking = false;
+  }
+
+  function schedule(){
+    if(!ticking){
+      ticking = true;
+      requestAnimationFrame(render);
+    }
+  }
+
+  addEventListener('scroll', schedule, {passive:true});
+  addEventListener('resize', schedule, {passive:true});
+  addEventListener('load', render, {once:true});
+  render();
+})();
+</script>
+</body>
+</html>
